@@ -5,12 +5,16 @@
 #include "RemoteSettings.h"
 #include <SPI.h>
 
-#define BME_SCK 18
-#define BME_MISO 19
-#define BME_MOSI 23
-#define BME_CS 5
+// #define BME_SCK 18
+// #define BME_MISO 19
+// #define BME_MOSI 23
+// #define BME_CS 5
+#define BME_SCL 19
+#define BME_SDA 18
+#define BME_VCC 23
 #define ANALOGUERAIN 34
 #define DIGIGTALRAIN 36
+#define RAINPOWER 32
 #define BATTERVOLTPORT 35
 #define R2 100 //voltage divider resistance (kOhm)
 #define R1 220 //voltage divider resistance (kOhm)
@@ -23,9 +27,9 @@ const long interval_loop  = 5000;
 
 
 
-//Adafruit_BME280 bme; // I2C
+Adafruit_BME280 bme; // I2C
 //Adafruit_BME280 bme(BME_CS); // hardware SPI
-Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
+// Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
 
 unsigned long delayTime;
 float rain_analog; 
@@ -44,14 +48,20 @@ char statebuffer[300];
 void setup() {
   // bat_voltage = 0;
   // rain_state = "OFF";
-  Serial.begin(9600);
+  Serial.begin(19200);
   Serial.println(F("BME280 test"));
   bool status;
   pinMode(DIGIGTALRAIN, INPUT);
+  pinMode(RAINPOWER, OUTPUT);
   rain_digital = LOW;
+  pinMode(BME_VCC, OUTPUT);
+  digitalWrite(BME_VCC,HIGH);
+  digitalWrite(RAINPOWER,HIGH);
+  delay(1000);
   // default settings
   // (you can also pass in a Wire library object like &Wire2)
-  status = bme.begin();  
+  // status = bme.begin(); 
+  status = bme.begin(0x76); 
   if (!status) {
     Serial.println("Could not find a valid BME280 sensor, check wiring!");
     while (1);
@@ -77,7 +87,8 @@ void setup() {
 
 
   WiFi.onEvent(WiFiEvent);
-  WiFi.onEvent(WiFiGotIP, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
+  WiFi.onEvent(WiFiGotIP, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);   
+  
   WiFiEventId_t eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
     Serial.print("WiFi lost connection. Reason: ");
     Serial.println(info.disconnected.reason);
