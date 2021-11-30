@@ -203,6 +203,13 @@ void read_Rain(){
   else{
     rain_voltage.valid = false;
   }
+  raining.val = rain_digital;
+  if(rain_digital == HIGH || rain_digital == LOW){
+    raining.valid = true;
+  }
+  else{
+    raining.valid = false;
+  }
 }
 
 void read_bme(){ // Read sensors
@@ -267,6 +274,7 @@ void set_state_structure(){
   stateJson[ptr_measurements->rain_voltage->name] = ptr_measurements->rain_voltage->val;
   }
   if(ptr_measurements->raining->valid){
+    
   stateJson[ptr_measurements->raining->name] =      ptr_measurements->raining->val; 
   }
   if(ptr_measurements->battery->valid){
