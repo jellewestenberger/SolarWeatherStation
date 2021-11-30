@@ -25,8 +25,33 @@ unsigned long currentMillis = 1;
 unsigned long previousMillis = 0; 
 const long interval_loop  = 5000;
 
+typedef struct Measurement{
+  char name[50];
+  float val; 
+  bool valid;  
+};
+
+typedef struct Readings{
+  Measurement *humidity;
+  Measurement *pressure; 
+  Measurement *temperature;
+  Measurement *rain_voltage;
+  Measurement *raining;
+  Measurement *altitude; 
+  Measurement *battery; 
+};
 
 
+struct Measurement temperature;
+struct Measurement pressure;
+struct Measurement humidity;
+struct Measurement altitude;
+struct Measurement rain_voltage;
+struct Measurement raining;
+struct Measurement battery; 
+struct Readings measurements;
+
+struct Readings *ptr_measurements = &measurements;
 Adafruit_BME280 bme; // I2C
 //Adafruit_BME280 bme(BME_CS); // hardware SPI
 // Adafruit_BME280 bme(BME_CS, BME_MOSI, BME_MISO, BME_SCK); // software SPI
@@ -46,6 +71,25 @@ char statebuffer[300];
 
 
 void setup() {
+  measurements.pressure = &pressure;
+  measurements.altitude = &altitude;
+  measurements.battery = &battery;
+  measurements.humidity = &humidity;
+  measurements.pressure = &pressure;
+  measurements.rain_voltage = &rain_voltage;
+  measurements.raining = &raining;
+  measurements.temperature = &temperature;
+
+  
+  strcpy(temperature.name,"temperature");
+  strcpy(humidity.name,"humidity");
+  strcpy(pressure.name,"pressure");
+  strcpy(altitude.name,"pressurealtitude");
+  strcpy(rain_voltage.name,"rain_voltage");
+  strcpy(raining.name,"rain_digital");
+  strcpy(battery.name,"battery_voltage");
+
+
   // bat_voltage = 0;
   // rain_state = "OFF";
   Serial.begin(19200);
@@ -145,49 +189,89 @@ void printValues() {
   Serial.print(bat_voltage);
   Serial.println(" V");
 
-  Serial.println();
+  Serial.println("structure readings:");
+  Serial.printf("pressure: %f\n",ptr_measurements->pressure->val);
 }
 void read_Rain(){
   rain_analog = float(analogRead(ANALOGUERAIN)) * (3.3/4096);
   rain_digital = digitalRead(DIGIGTALRAIN);
-  // if(rain_digital == 0){
-  //   rain_state = "ON";
-  // }
-  // else{
-  //   rain_state = "OFF";
-  // }
+
+  rain_voltage.val = rain_analog;
+  if(rain_analog >= 0 && rain_analog < 4){
+    rain_voltage.valid = true;
+  }
+  else{
+    rain_voltage.valid = false;
+  }
 }
 
-void read_bme(){
+void read_bme(){ // Read sensors
   bmetemp = bme.readTemperature();
   bmehum = bme.readHumidity();
   bmepres = bme.readPressure();
   bmealt = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
+  temperature.val= bmetemp;
+  if(bmetemp >= -60 && bmetemp <= 100){    
+    temperature.valid = true; 
+  }
+  else{
+    temperature.valid= false; 
+  }
+
+  humidity.val = bmehum;
+  if(bmehum >= 0 && bmehum <= 100){
+    humidity.valid = true;
+  }
+  else{
+    humidity.valid = false; 
+  }
+
+  pressure.val = bmepres;
+  if(bmepres >= 1000 && bmepres <= 1e6){
+    pressure.valid = true;
+  }
+  else{
+    pressure.valid = false;
+  }
+
 }
 
 void read_BatVoltage(){
   bat_voltage = (analogRead(BATTERVOLTPORT))*(3.3/4096)*(float(R2+R1)/float(R1))  ;
+
+  battery.val = bat_voltage; 
+  if(bat_voltage > 0 && bat_voltage < 10){
+    battery.valid = true;
+  }
+  else{
+    battery.valid = false;
+  }
 }
 
+// Create JSON payload for MQTT
 void set_state_structure(){
   StaticJsonDocument<300> stateJson; //Memory pool
-  
-  stateJson["temperature"] = String(bmetemp);
-  
-  
-  stateJson["humidity"] = String(bmehum);
-  
-  stateJson["pressure"] = String(bmepres);
-  
 
-  stateJson["rain_voltage"] = String(rain_analog);
- 
-  stateJson["rain_digital"] = String(rain_digital);
-  
-  stateJson["battery_voltage"] = String(bat_voltage);
-  
-  stateJson["pressurealtitude"] = String(bmealt);
+  // Check for each measurements if it's valid
+  if(ptr_measurements->temperature->valid){  
+  stateJson[ptr_measurements->temperature->name] =  ptr_measurements->temperature->val;
+  }
+  if(ptr_measurements->humidity->valid){
+  stateJson[ptr_measurements->humidity->name] =     ptr_measurements->humidity->val;
+  }
+  if(ptr_measurements->pressure->valid){
+  stateJson[ptr_measurements->pressure->name] =     ptr_measurements->pressure->val ;
+  }
+  if(ptr_measurements->rain_voltage->valid){
+  stateJson[ptr_measurements->rain_voltage->name] = ptr_measurements->rain_voltage->val;
+  }
+  if(ptr_measurements->raining->valid){
+  stateJson[ptr_measurements->raining->name] =      ptr_measurements->raining->val; 
+  }
+  if(ptr_measurements->battery->valid){
+  stateJson[ptr_measurements->battery->name] =      ptr_measurements->battery->val; 
+  }
 
   memset(statebuffer,0,sizeof(statebuffer));
   serializeJson(stateJson,statebuffer);
