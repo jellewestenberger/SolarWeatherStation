@@ -16,6 +16,7 @@
 #define DIGIGTALRAIN 36
 #define RAINPOWER 32
 #define BATTERVOLTPORT 35
+#define AVG_WINDOW 30
 #define R2 100 //voltage divider resistance (kOhm)
 #define R1 220 //voltage divider resistance (kOhm)
 #define SEALEVELPRESSURE_HPA (1013.25)
@@ -23,7 +24,10 @@
 
 unsigned long currentMillis = 1; 
 unsigned long previousMillis = 0; 
-const long interval_loop  = 5000;
+unsigned long previous_publish = 0;
+const long interval_loop  = 1000;
+const long interval_publish = 5000;
+
 
 typedef struct Measurement{
   char name[50];
@@ -67,7 +71,19 @@ float bmepres;
 float bmehum; 
 float bmealt; 
 
+float pressure_avg;
+float humidity_avg;
+float temperature_avg;
+float rain_voltage_avg;
+float altitude_avg;
+
 char statebuffer[300];
+float press_array[AVG_WINDOW] = {0};
+float temp_array[AVG_WINDOW] = {0};
+float hum_array[AVG_WINDOW] = {0};
+// float rain_vlt_array[AVG_WINDOW];
+float alt_array[AVG_WINDOW] = {0};
+
 
 
 void setup() {
@@ -110,8 +126,7 @@ void setup() {
     Serial.println("Could not find a valid BME280 sensor, check wiring!");
     while (1);
   }
-
-  Serial.println("-- Default Test --");
+  
   delayTime = 5000;
   wifiManager.setConnectTimeout(180);
   wifiManager.setTimeout(180);
@@ -143,6 +158,7 @@ void setup() {
   // WiFi.removeEvent(eventID);
   Serial.println("Connecting to WiFi");
   wifiManager.autoConnect("Weatherstation_AP",AP_PASSWORD);
+  previous_publish = millis();
 }
 
 
@@ -150,59 +166,55 @@ void loop() {
 
   currentMillis = millis();
   if(currentMillis - previousMillis >= interval_loop){ // don't use delay(). Messes with Tickers
-  read_bme();
-  read_Rain();
-  read_BatVoltage();
-  printValues();
-  set_state_structure();
-  if (WiFi.isConnected()) {
-    publish_state();
-  }
+    read_bme();
+    read_Rain();
+    read_BatVoltage();    
+    find_Averages();
+    printValues();
     previousMillis = currentMillis;
   }
+   if(currentMillis - previous_publish >= interval_publish){
+      set_state_structure();
+      if (WiFi.isConnected()) {
+        publish_state();
+        previous_publish = currentMillis;
+      }
+    }
 }
 
 void printValues() {
-  Serial.print("Temperature = ");
-  Serial.print(bmetemp);
-  Serial.println(" *C");
 
-  
-  Serial.print("Pressure = ");
-  Serial.print(bmepres / 100.0F);
-  Serial.println(" hPa");
+  Serial.printf("Temperature = %f*C, avg = %f*C\n",bmetemp,temperature_avg);
+  Serial.printf("Humidity = %f%, avg = %f%\n",bmehum,humidity_avg);
+  Serial.printf("Pressure = %fPa, avg = %fPa\n",bmepres,pressure_avg); 
 
   Serial.print("Approx. Altitude = ");
   Serial.print(bmealt);
   Serial.println(" m");
 
-  Serial.print("Humidity = ");
-  Serial.print(bmehum);
-  Serial.println(" %");
-  Serial.print("Analogue Rain = ");
-  Serial.print(rain_analog);
-  Serial.println(" V");
+ Serial.printf("Rain Voltage = %fV, avg = %fV\n",rain_analog,rain_voltage_avg);
+
   Serial.print("Digital Rain= ");
   Serial.println(rain_digital);
 
   Serial.print("Battery Voltage = ");
   Serial.print(bat_voltage);
   Serial.println(" V");
-
-  Serial.println("structure readings:");
-  Serial.printf("pressure: %f\n",ptr_measurements->pressure->val);
+  Serial.print("\n\n");
 }
 void read_Rain(){
   rain_analog = float(analogRead(ANALOGUERAIN)) * (3.3/4096);
   rain_digital = digitalRead(DIGIGTALRAIN);
 
   rain_voltage.val = rain_analog;
-  if(rain_analog >= 0 && rain_analog < 4){
-    rain_voltage.valid = true;
+  if(rain_analog >= 0 && rain_analog < 4){    
+      
+       rain_voltage.valid = true;
   }
   else{
     rain_voltage.valid = false;
   }
+ 
   raining.val = rain_digital;
   if(rain_digital == HIGH || rain_digital == LOW){
     raining.valid = true;
@@ -218,29 +230,48 @@ void read_bme(){ // Read sensors
   bmepres = bme.readPressure();
   bmealt = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
-  temperature.val= bmetemp;
-  if(bmetemp >= -60 && bmetemp <= 100){    
-    temperature.valid = true; 
-  }
-  else{
-    temperature.valid= false; 
-  }
 
-  humidity.val = bmehum;
-  if(bmehum >= 0 && bmehum <= 100){
-    humidity.valid = true;
+  if(bmetemp >= -60 && bmetemp <= 100){    //check if newest reading is valid  
+    appendAndShiftArray(temp_array,bmetemp,AVG_WINDOW); //update window
+    if(temperature_avg >= -60 && temperature_avg <= 100){ //check if average reading is valid
+        temperature.val= temperature_avg;
+        temperature.valid = true; 
+    }    
+    else{
+      temperature.valid= false; 
+    }
+    if(temp_array[0] == 0){ // if window hasn't been filled yet
+      temperature.valid = false;
+    }
   }
-  else{
-    humidity.valid = false; 
+   
+  if(bmehum >= 0 && bmehum <= 100){    
+    appendAndShiftArray(hum_array,bmehum,AVG_WINDOW);
+    if(humidity_avg >= 0 && humidity_avg <= 100){
+      humidity.val = humidity_avg;
+      humidity.valid = true;
+    }
+    else{
+      humidity.valid = false; 
+    }
+    if(hum_array[0] == 0){
+      humidity.valid = false;
   }
-
-  pressure.val = bmepres;
-  if(bmepres >= 1000 && bmepres <= 1e6){
-    pressure.valid = true;
   }
+  
+  if(bmepres >= 10000 && bmepres <= 1e6){
+    appendAndShiftArray(press_array,bmepres,AVG_WINDOW);
+  if(pressure_avg >= 10000 && pressure_avg <= 1e6){
+       pressure.valid = true;
+       pressure.val = pressure_avg;
+    }
   else{
     pressure.valid = false;
-  }
+    }  
+    if(press_array[0]==0){
+      pressure.valid = false; 
+    }   
+  }  
 
 }
 
@@ -295,5 +326,25 @@ void publish_state(){
   Serial.printf("Message : %s\n",statebuffer);
 }
 
+void appendAndShiftArray(float arr[],float val, int length){
+  // Shift values to the left
+  for(int i = 0; i < length-1; i++){
+      arr[i]=arr[i+1];      
+  }
+  arr[length-1] = val; //Append value at the last entry 
+}
 
+float calculate_Average(float arr[], int length){
+  float avg = 0;
+  for(int i =0; i<length;i++){
+    avg += arr[i];
+  }
+  return avg/float(length);
+}
 
+void find_Averages(){
+  pressure_avg = calculate_Average(press_array,AVG_WINDOW);
+  humidity_avg = calculate_Average(hum_array,AVG_WINDOW);
+  temperature_avg = calculate_Average(temp_array,AVG_WINDOW);
+  // rain_voltage_avg = calculate_Average(rain_vlt_array,AVG_WINDOW);
+}
