@@ -4,7 +4,9 @@
 #include <Adafruit_BME280.h>
 #include "RemoteSettings.h"
 #include <SPI.h>
-
+#include <math.h>
+#include <esp_sleep.h>
+// #define USEWIFIMANAGER
 // #define BME_SCK 18
 // #define BME_MISO 19
 // #define BME_MOSI 23
@@ -16,17 +18,20 @@
 #define DIGIGTALRAIN 36
 #define RAINPOWER 32
 #define BATTERVOLTPORT 35
-#define AVG_WINDOW 30
+#define AVG_WINDOW 60
 #define R2 100 //voltage divider resistance (kOhm)
 #define R1 220 //voltage divider resistance (kOhm)
 #define SEALEVELPRESSURE_HPA (1013.25)
-
+#define DEEPSLEEPDURATION 30000 // how many ms in deep sleep
 
 unsigned long currentMillis = 1; 
 unsigned long previousMillis = 0; 
 unsigned long previous_publish = 0;
 const long interval_loop  = 1000;
 const long interval_publish = 5000;
+
+bool all_valid = false;
+
 
 
 typedef struct Measurement{
@@ -83,6 +88,7 @@ float temp_array[AVG_WINDOW] = {0};
 float hum_array[AVG_WINDOW] = {0};
 // float rain_vlt_array[AVG_WINDOW];
 float alt_array[AVG_WINDOW] = {0};
+bool success_publish = false;
 
 
 
@@ -108,7 +114,7 @@ void setup() {
 
   // bat_voltage = 0;
   // rain_state = "OFF";
-  Serial.begin(19200);
+  Serial.begin(9600);
   Serial.println(F("BME280 test"));
   bool status;
   pinMode(DIGIGTALRAIN, INPUT);
@@ -128,10 +134,7 @@ void setup() {
   }
   
   delayTime = 5000;
-  wifiManager.setConnectTimeout(180);
-  wifiManager.setTimeout(180);
-  wifiManager.setWiFiAutoReconnect(true);
-  wifiManager.setDebugOutput(true);
+  
   //    wifiManager.resetSettings();// uncomment to reset stored wifi settings
   mqttClient.onConnect(onMqttConnect);
   mqttClient.onDisconnect(onMqttDisconnect);
@@ -157,13 +160,23 @@ void setup() {
   Serial.println(eventID);  
   // WiFi.removeEvent(eventID);
   Serial.println("Connecting to WiFi");
+  #ifdef USEWIFIMANAGER
+  wifiManager.setConnectTimeout(180);
+  wifiManager.setTimeout(180);
+  wifiManager.setWiFiAutoReconnect(true);
+  wifiManager.setDebugOutput(true);
   wifiManager.autoConnect("Weatherstation_AP",AP_PASSWORD);
+  #else
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFISSID,WIFIPASS);
+  #endif
   previous_publish = millis();
+  esp_sleep_enable_timer_wakeup(DEEPSLEEPDURATION * 1000); // in microseconds
 }
 
 
 void loop() { 
-
+  success_publish = false;
   currentMillis = millis();
   if(currentMillis - previousMillis >= interval_loop){ // don't use delay(). Messes with Tickers
     read_bme();
@@ -173,13 +186,24 @@ void loop() {
     printValues();
     previousMillis = currentMillis;
   }
-   if(currentMillis - previous_publish >= interval_publish){
+  if(currentMillis - previous_publish >= interval_publish){
       set_state_structure();
-      if (WiFi.isConnected()) {
-        publish_state();
-        previous_publish = currentMillis;
+      if (WiFi.isConnected() && all_valid) {
+        success_publish = publish_state();
+        
       }
+      else{
+        Serial.println("Not all measurements are valid");
+        Serial.printf("Pressure: %i, Temperature %i, Humidity: %i\n\n",pressure.valid,temperature.valid,humidity.valid);
+      }
+      previous_publish = currentMillis;
     }
+    if(success_publish){
+      Serial.println("Going to deep sleep");
+      esp_deep_sleep_start();
+    }
+
+    
 }
 
 void printValues() {
@@ -273,6 +297,13 @@ void read_bme(){ // Read sensors
     }   
   }  
 
+  if(pressure.valid && temperature.valid && humidity.valid){
+    all_valid = true;
+  }
+  else{
+    all_valid = false;
+  }
+
 }
 
 void read_BatVoltage(){
@@ -295,21 +326,39 @@ void set_state_structure(){
   if(ptr_measurements->temperature->valid){  
   stateJson[ptr_measurements->temperature->name] =  ptr_measurements->temperature->val;
   }
+  else{
+    stateJson[ptr_measurements->temperature->name] = NAN;
+  }
   if(ptr_measurements->humidity->valid){
   stateJson[ptr_measurements->humidity->name] =     ptr_measurements->humidity->val;
+  }
+  else{
+    stateJson[ptr_measurements->humidity->name] = NAN;
   }
   if(ptr_measurements->pressure->valid){
   stateJson[ptr_measurements->pressure->name] =     ptr_measurements->pressure->val ;
   }
+  else{
+    stateJson[ptr_measurements->pressure->name] = NAN;
+  }
   if(ptr_measurements->rain_voltage->valid){
   stateJson[ptr_measurements->rain_voltage->name] = ptr_measurements->rain_voltage->val;
   }
+  else{
+    stateJson[ptr_measurements->rain_voltage->name] = NAN;
+  }
   if(ptr_measurements->raining->valid){
     
-  stateJson[ptr_measurements->raining->name] =      ptr_measurements->raining->val; 
+  stateJson[ptr_measurements->raining->name] = ptr_measurements->raining->val; 
+  }
+  else{
+    stateJson[ptr_measurements->raining->name] = NAN;
   }
   if(ptr_measurements->battery->valid){
-  stateJson[ptr_measurements->battery->name] =      ptr_measurements->battery->val; 
+    stateJson[ptr_measurements->battery->name] = ptr_measurements->battery->val; 
+  }
+  else{
+    stateJson[ptr_measurements->battery->name] = NAN;
   }
 
   memset(statebuffer,0,sizeof(statebuffer));
@@ -319,11 +368,12 @@ void set_state_structure(){
 }
 
 
-void publish_state(){
+bool publish_state(){
  
   uint16_t packetIdPub1 = mqttClient.publish(TOPIC_STATE, 1, false, statebuffer); 
   Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_STATE, packetIdPub1);
   Serial.printf("Message : %s\n",statebuffer);
+  return true;
 }
 
 void appendAndShiftArray(float arr[],float val, int length){

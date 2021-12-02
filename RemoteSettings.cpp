@@ -4,7 +4,9 @@
 
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
-WiFiManager wifiManager;
+#ifdef USEWIFIMANAGER
+  WiFiManager wifiManager;
+#endif
 
 
 
@@ -23,7 +25,7 @@ void publish_config(){
     Serial.println("buffer: ");
     Serial.println(buffer);
     uint16_t packetIdPub0 = mqttClient.publish(TOPIC_TEMP_CONFIG,1 , true, buffer);
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_TEMP_CONFIG, packetIdPub0);
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_TEMP_CONFIG, packetIdPub0);
     Serial.printf("Message : %s\n",buffer);
 
 
@@ -194,7 +196,11 @@ void WiFiEvent(WiFiEvent_t event) {
     case SYSTEM_EVENT_STA_DISCONNECTED:
       Serial.println("Disconnected from WiFi access point");
       Serial.println("Connecting to WiFi");
+      #ifdef USEWIFIMANAGER
       wifiManager.autoConnect("Weatherstation_AP",AP_PASSWORD);
+      #else
+      WiFi.begin(WIFISSID,WIFIPASS);
+      #endif 
       // WiFi.begin(ssid, password);
       break;
     case SYSTEM_EVENT_STA_AUTHMODE_CHANGE:
