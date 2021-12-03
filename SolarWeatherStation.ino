@@ -18,11 +18,11 @@
 #define DIGIGTALRAIN 36
 #define RAINPOWER 32
 #define BATTERVOLTPORT 35
-#define AVG_WINDOW 60
+#define AVG_WINDOW 30
 #define R2 100 //voltage divider resistance (kOhm)
 #define R1 220 //voltage divider resistance (kOhm)
 #define SEALEVELPRESSURE_HPA (1013.25)
-#define DEEPSLEEPDURATION 30000 // how many ms in deep sleep
+
 
 unsigned long currentMillis = 1; 
 unsigned long previousMillis = 0; 
@@ -32,8 +32,8 @@ const long interval_publish = 5000;
 
 bool all_valid = false;
 
-
-
+#define DEEPSLEEP
+#define DEEPSLEEPDURATION 300000 // how many ms in deep sleep
 typedef struct Measurement{
   char name[50];
   float val; 
@@ -79,20 +79,27 @@ float bmealt;
 float pressure_avg;
 float humidity_avg;
 float temperature_avg;
-float rain_voltage_avg;
+// float rain_voltage_avg;
 float altitude_avg;
 
 char statebuffer[300];
 float press_array[AVG_WINDOW] = {0};
+int press_counter;
 float temp_array[AVG_WINDOW] = {0};
+int temp_counter;
 float hum_array[AVG_WINDOW] = {0};
-// float rain_vlt_array[AVG_WINDOW];
+int hum_counter;
 float alt_array[AVG_WINDOW] = {0};
+int alt_counter;
+// float rain_vlt_array[AVG_WINDOW];
+
 bool success_publish = false;
 
 
 
 void setup() {
+
+
   measurements.pressure = &pressure;
   measurements.altitude = &altitude;
   measurements.battery = &battery;
@@ -102,6 +109,9 @@ void setup() {
   measurements.raining = &raining;
   measurements.temperature = &temperature;
 
+  pressure.valid = false;
+  humidity.valid = false;
+  temperature.valid = false;
   
   strcpy(temperature.name,"temperature");
   strcpy(humidity.name,"humidity");
@@ -171,7 +181,18 @@ void setup() {
     WiFi.begin(WIFISSID,WIFIPASS);
   #endif
   previous_publish = millis();
-  esp_sleep_enable_timer_wakeup(DEEPSLEEPDURATION * 1000); // in microseconds
+  #ifdef DEEPSLEEP
+    esp_sleep_enable_timer_wakeup(DEEPSLEEPDURATION * 1000); // in microseconds
+  #endif
+memset(press_array,NAN, sizeof(press_array));
+memset(temp_array,NAN, sizeof(temp_array));
+memset(hum_array,NAN, sizeof(hum_array));
+memset(alt_array,NAN, sizeof(alt_array));
+press_counter = 0;
+temp_counter = 0;
+hum_counter = 0;
+alt_counter = 0;
+previousMillis = millis();
 }
 
 
@@ -182,11 +203,11 @@ void loop() {
     read_bme();
     read_Rain();
     read_BatVoltage();    
-    find_Averages();
+    // find_Averages();
     printValues();
     previousMillis = currentMillis;
   }
-  if(currentMillis - previous_publish >= interval_publish){
+  if((currentMillis - previous_publish >= interval_publish) && (hum_counter>=AVG_WINDOW && press_counter >=AVG_WINDOW && temp_counter >= AVG_WINDOW)){
       set_state_structure();
       if (WiFi.isConnected() && all_valid) {
         success_publish = publish_state();
@@ -199,8 +220,10 @@ void loop() {
       previous_publish = currentMillis;
     }
     if(success_publish){
+      #ifdef DEEPSLEEP
       Serial.println("Going to deep sleep");
       esp_deep_sleep_start();
+      #endif
     }
 
     
@@ -216,7 +239,7 @@ void printValues() {
   Serial.print(bmealt);
   Serial.println(" m");
 
- Serial.printf("Rain Voltage = %fV, avg = %fV\n",rain_analog,rain_voltage_avg);
+  Serial.printf("Rain Voltage = %fV\n",rain_analog);
 
   Serial.print("Digital Rain= ");
   Serial.println(rain_digital);
@@ -255,47 +278,39 @@ void read_bme(){ // Read sensors
   bmealt = bme.readAltitude(SEALEVELPRESSURE_HPA);
 
 
-  if(bmetemp >= -60 && bmetemp <= 100){    //check if newest reading is valid  
-    appendAndShiftArray(temp_array,bmetemp,AVG_WINDOW); //update window
-    if(temperature_avg >= -60 && temperature_avg <= 100){ //check if average reading is valid
-        temperature.val= temperature_avg;
-        temperature.valid = true; 
-    }    
-    else{
+  if(check_validity_temperature(bmetemp)){    //check if newest reading is valid  
+    appendAndShiftArray(temp_array,bmetemp,AVG_WINDOW,&temp_counter); //update window
+    temperature_avg=calculate_Average(temp_array,AVG_WINDOW,temp_counter);
+    temperature.val= temperature_avg;
+    Serial.printf("Pressure counter: %i\n",press_counter);  
+   
+  }
+   else{
       temperature.valid= false; 
     }
-    if(temp_array[0] == 0){ // if window hasn't been filled yet
-      temperature.valid = false;
-    }
-  }
+    temperature.valid=check_validity_temperature(temp_array[0]);
    
-  if(bmehum >= 0 && bmehum <= 100){    
-    appendAndShiftArray(hum_array,bmehum,AVG_WINDOW);
-    if(humidity_avg >= 0 && humidity_avg <= 100){
-      humidity.val = humidity_avg;
-      humidity.valid = true;
-    }
-    else{
+  if(check_validity_humidity(bmehum)){    
+    appendAndShiftArray(hum_array,bmehum,AVG_WINDOW,&hum_counter);
+    humidity_avg=calculate_Average(hum_array,AVG_WINDOW,hum_counter);
+    humidity.val = humidity_avg;
+  
+    
+  }
+  else{
       humidity.valid = false; 
     }
-    if(hum_array[0] == 0){
-      humidity.valid = false;
-  }
-  }
+  humidity.valid = check_validity_humidity(hum_array[0]);
   
-  if(bmepres >= 10000 && bmepres <= 1e6){
-    appendAndShiftArray(press_array,bmepres,AVG_WINDOW);
-  if(pressure_avg >= 10000 && pressure_avg <= 1e6){
-       pressure.valid = true;
-       pressure.val = pressure_avg;
-    }
+  if(check_validity_pressure(bmepres)){
+    appendAndShiftArray(press_array,bmepres,AVG_WINDOW,&press_counter); 
+    pressure_avg=calculate_Average(press_array,AVG_WINDOW,press_counter);
+      pressure.val = pressure_avg;
+  }
   else{
     pressure.valid = false;
     }  
-    if(press_array[0]==0){
-      pressure.valid = false; 
-    }   
-  }  
+  pressure.valid = check_validity_pressure(press_array[0]); 
 
   if(pressure.valid && temperature.valid && humidity.valid){
     all_valid = true;
@@ -310,7 +325,7 @@ void read_BatVoltage(){
   bat_voltage = (analogRead(BATTERVOLTPORT))*(3.3/4096)*(float(R2+R1)/float(R1))  ;
 
   battery.val = bat_voltage; 
-  if(bat_voltage > 0 && bat_voltage < 10){
+  if(check_validity_battery_voltage(bat_voltage)){
     battery.valid = true;
   }
   else{
@@ -376,25 +391,79 @@ bool publish_state(){
   return true;
 }
 
-void appendAndShiftArray(float arr[],float val, int length){
+void appendAndShiftArray(float arr[],float val, int length, int *counter){
   // Shift values to the left
   for(int i = 0; i < length-1; i++){
       arr[i]=arr[i+1];      
   }
   arr[length-1] = val; //Append value at the last entry 
+  if(*counter<length){
+    *counter+=1;
+  }
 }
 
-float calculate_Average(float arr[], int length){
+float calculate_Average(float arr[], int length, int counter){
   float avg = 0;
-  for(int i =0; i<length;i++){
+  if(counter==0){ //if array is empty, would result in negative index in next loop
+    return 0;
+  }
+  for(int i =(length-counter); i<length;i++){ // counter determines how much of the array is filled from the right. sum from there.
     avg += arr[i];
   }
-  return avg/float(length);
+  return avg/float(counter);
 }
 
-void find_Averages(){
-  pressure_avg = calculate_Average(press_array,AVG_WINDOW);
-  humidity_avg = calculate_Average(hum_array,AVG_WINDOW);
-  temperature_avg = calculate_Average(temp_array,AVG_WINDOW);
-  // rain_voltage_avg = calculate_Average(rain_vlt_array,AVG_WINDOW);
+bool check_validity_pressure(float val){
+  if(val>50000 && val <150000){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+bool check_validity_humidity(float val){
+  if(val>=0 && val <= 100){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+bool check_validity_temperature(float val){
+  if(val>= -30 && val<= 70){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+bool check_validity_altitude(float val){
+  if(val>-500 && val<= 15000){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+bool check_validity_rain_voltage(float val){
+  if(val>=0 && val<=4){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+
+bool check_validity_battery_voltage(float val){
+  if(val>=0 && val <= 10){
+    return true;
+  }
+  else{
+    return false;
+  }
 }
