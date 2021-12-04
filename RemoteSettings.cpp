@@ -6,10 +6,12 @@ int WiFiConnectTimeout = 20000;
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
 
-
+uint16_t last_packagid = -1;
+uint16_t last_successfull_packagid = -2;
 
 
 void publish_config(){
+
   Serial.print("\nPublishing MQTT Discovery Configuration Payload\n\n");
     // TEMPERATURE
     StaticJsonDocument<300> tempdoc;
@@ -23,6 +25,7 @@ void publish_config(){
     serializeJson(tempdoc,buffer);
  
     uint16_t packetIdPub0 = mqttClient.publish(TOPIC_TEMP_CONFIG,1 , true, buffer);
+    last_packagid = packetIdPub0;
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_TEMP_CONFIG, packetIdPub0);
     Serial.printf("Message : %s\n",buffer);
 
@@ -40,6 +43,7 @@ void publish_config(){
     serializeJson(humdoc,buffer);
   
     uint16_t packetIdPub2 = mqttClient.publish(TOPIC_HUM_CONFIG,1 , true, buffer);
+    last_packagid = packetIdPub2;
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_HUM_CONFIG, packetIdPub2);
     Serial.printf("Message : %s\n",buffer);
 
@@ -56,6 +60,7 @@ void publish_config(){
     serializeJson(presdoc,buffer);
    
     uint16_t packetIdPub3 = mqttClient.publish(TOPIC_PRES_CONFIG,1 , true, buffer);
+    last_packagid = packetIdPub3;
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_PRES_CONFIG, packetIdPub3);
     Serial.printf("Message : %s\n",buffer);
 
@@ -72,6 +77,7 @@ void publish_config(){
     serializeJson(batvdoc,buffer);
    
     uint16_t packetIdPub4 = mqttClient.publish(TOPIC_BATVOLT_CONFIG,1 , true, buffer);
+    last_packagid = packetIdPub4;
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_BATVOLT_CONFIG, packetIdPub4);
     Serial.printf("Message : %s\n",buffer);
 
@@ -88,6 +94,7 @@ void publish_config(){
     serializeJson(rainvdoc,buffer);
 
     uint16_t packetIdPub5 = mqttClient.publish(TOPIC_RAINVOLT_CONFIG,1 , true, buffer);
+    last_packagid = packetIdPub5; 
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_RAINVOLT_CONFIG, packetIdPub5);
     Serial.printf("Message : %s\n",buffer);
 
@@ -106,6 +113,7 @@ void publish_config(){
     serializeJson(rainsensordoc,buffer);
    
     uint16_t packetIdPub6 = mqttClient.publish(TOPIC_RAINSENSOR_CONFIG,1 , true, buffer);
+    last_packagid = packetIdPub6;
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_RAINSENSOR_CONFIG, packetIdPub6);
     Serial.printf("Message : %s\n",buffer);
 
@@ -155,15 +163,17 @@ void onMqttPublish(uint16_t packetId) {
   Serial.print("Publish acknowledged.");
   Serial.print("  packetId: ");
   Serial.println(packetId);
+  last_successfull_packagid = packetId;
 }
 
 
-bool publish_state(char *payload){
+ void publish_state(char *payload){
+
  Serial.print("\n Publishing State payload\n\n");
   uint16_t packetIdPub1 = mqttClient.publish(TOPIC_STATE, 1, false, payload); 
   Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_STATE, packetIdPub1);
+  last_packagid = packetIdPub1;
   Serial.printf("Message : %s\n\n",payload);
-  return true;
 }
 
 //void onMqttSubscribe(uint16_t packetId) {

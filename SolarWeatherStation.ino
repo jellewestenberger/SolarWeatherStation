@@ -93,12 +93,8 @@ float alt_array[AVG_WINDOW] = {0};
 int alt_counter;
 // float rain_vlt_array[AVG_WINDOW];
 
-bool success_publish = false;
-
-
 
 void setup() {
-
 
   measurements.pressure = &pressure;
   measurements.altitude = &altitude;
@@ -160,21 +156,20 @@ void setup() {
   #ifdef DEEPSLEEP
     esp_sleep_enable_timer_wakeup(DEEPSLEEPDURATION * 1000); // in microseconds
   #endif
-memset(press_array,NAN, sizeof(press_array));
-memset(temp_array,NAN, sizeof(temp_array));
-memset(hum_array,NAN, sizeof(hum_array));
-memset(alt_array,NAN, sizeof(alt_array));
-press_counter = 0;
-temp_counter = 0;
-hum_counter = 0;
-alt_counter = 0;
-previousMillis = millis();
+  memset(press_array,NAN, sizeof(press_array));
+  memset(temp_array,NAN, sizeof(temp_array));
+  memset(hum_array,NAN, sizeof(hum_array));
+  memset(alt_array,NAN, sizeof(alt_array));
+  press_counter = 0;
+  temp_counter = 0;
+  hum_counter = 0;
+  alt_counter = 0;
+  previousMillis = millis();
  
 }
 
 
 void loop() { 
-  success_publish = false;
   currentMillis = millis();
   if(currentMillis - previousMillis >= interval_loop){ // don't use delay(). Messes with Tickers
     read_bme();       
@@ -192,8 +187,7 @@ void loop() {
          read_Rain();
          read_BatVoltage();
          set_state_structure();
-        success_publish = publish_state(statebuffer);
-        
+         publish_state(statebuffer);        
       }
 
       else{
@@ -202,7 +196,7 @@ void loop() {
       }
       previous_publish = currentMillis;
     }
-    if(success_publish){
+    if(last_packagid == last_successfull_packagid){ //if successfully published
       #ifdef DEEPSLEEP
       Serial.printf("Going to deep sleep for %i seconds\n",DEEPSLEEPDURATION/1000);
       esp_deep_sleep_start();
