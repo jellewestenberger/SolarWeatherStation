@@ -6,7 +6,7 @@
 #include <SPI.h>
 #include <math.h>
 #include <esp_sleep.h>
-// #define USEWIFIMANAGER
+
 // #define BME_SCK 18
 // #define BME_MISO 19
 // #define BME_MOSI 23
@@ -132,7 +132,7 @@ void setup() {
   rain_digital = LOW;
   pinMode(BME_VCC, OUTPUT);
   digitalWrite(BME_VCC,HIGH);
-  digitalWrite(RAINPOWER,HIGH);
+  
   delay(1000);
   // default settings
   // (you can also pass in a Wire library object like &Wire2)
@@ -154,32 +154,8 @@ void setup() {
   mqttClient.setServer(BROKER_HOST, BROKER_PORT);
   // If your broker requires authentication (username and password), set them below
   mqttClient.setCredentials(BROKER_USER, BROKER_PASSWORD);
-
-
-
-
   WiFi.onEvent(WiFiEvent);
-  WiFi.onEvent(WiFiGotIP, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);   
-  
-  WiFiEventId_t eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
-    Serial.print("WiFi lost connection. Reason: ");
-    Serial.println(info.disconnected.reason);
-  }, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
-
-  Serial.print("WiFi Event ID: ");
-  Serial.println(eventID);  
-  // WiFi.removeEvent(eventID);
-  Serial.println("Connecting to WiFi");
-  #ifdef USEWIFIMANAGER
-  wifiManager.setConnectTimeout(180);
-  wifiManager.setTimeout(180);
-  wifiManager.setWiFiAutoReconnect(true);
-  wifiManager.setDebugOutput(true);
-  wifiManager.autoConnect("Weatherstation_AP",AP_PASSWORD);
-  #else
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(WIFISSID,WIFIPASS);
-  #endif
+  // WiFi.onEvent(WiFiGotIP, WiFiEvent_t::SYSTEM_EVENT_STA_GOT_IP);
   previous_publish = millis();
   #ifdef DEEPSLEEP
     esp_sleep_enable_timer_wakeup(DEEPSLEEPDURATION * 1000); // in microseconds
@@ -193,6 +169,7 @@ temp_counter = 0;
 hum_counter = 0;
 alt_counter = 0;
 previousMillis = millis();
+ 
 }
 
 
@@ -200,19 +177,25 @@ void loop() {
   success_publish = false;
   currentMillis = millis();
   if(currentMillis - previousMillis >= interval_loop){ // don't use delay(). Messes with Tickers
-    read_bme();
-    read_Rain();
-    read_BatVoltage();    
-    // find_Averages();
-    printValues();
+    read_bme();       
+    // printValues();
+    
     previousMillis = currentMillis;
   }
-  if((currentMillis - previous_publish >= interval_publish) && (hum_counter>=AVG_WINDOW && press_counter >=AVG_WINDOW && temp_counter >= AVG_WINDOW)){
-      set_state_structure();
-      if (WiFi.isConnected() && all_valid) {
-        success_publish = publish_state();
+  if((currentMillis - previous_publish >= interval_publish) && (hum_counter>=AVG_WINDOW && press_counter >=AVG_WINDOW && temp_counter >= AVG_WINDOW)){       
+
+      if(WiFi.status() != WL_CONNECTED){
+        connectToWiFi();
+      }
+      
+      if (mqttClient.connected() && all_valid) {
+         read_Rain();
+         read_BatVoltage();
+         set_state_structure();
+        success_publish = publish_state(statebuffer);
         
       }
+
       else{
         Serial.println("Not all measurements are valid");
         Serial.printf("Pressure: %i, Temperature %i, Humidity: %i\n\n",pressure.valid,temperature.valid,humidity.valid);
@@ -221,7 +204,7 @@ void loop() {
     }
     if(success_publish){
       #ifdef DEEPSLEEP
-      Serial.println("Going to deep sleep");
+      Serial.printf("Going to deep sleep for %i seconds\n",DEEPSLEEPDURATION/1000);
       esp_deep_sleep_start();
       #endif
     }
@@ -250,6 +233,9 @@ void printValues() {
   Serial.print("\n\n");
 }
 void read_Rain(){
+
+  digitalWrite(RAINPOWER,HIGH);
+  delay(100);
   rain_analog = float(analogRead(ANALOGUERAIN)) * (3.3/4096);
   rain_digital = digitalRead(DIGIGTALRAIN);
 
@@ -269,6 +255,7 @@ void read_Rain(){
   else{
     raining.valid = false;
   }
+  digitalWrite(RAINPOWER,LOW);
 }
 
 void read_bme(){ // Read sensors
@@ -383,13 +370,6 @@ void set_state_structure(){
 }
 
 
-bool publish_state(){
- 
-  uint16_t packetIdPub1 = mqttClient.publish(TOPIC_STATE, 1, false, statebuffer); 
-  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_STATE, packetIdPub1);
-  Serial.printf("Message : %s\n",statebuffer);
-  return true;
-}
 
 void appendAndShiftArray(float arr[],float val, int length, int *counter){
   // Shift values to the left

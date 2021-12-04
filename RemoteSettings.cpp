@@ -1,16 +1,16 @@
 #include "RemoteSettings.h"
 
+int WiFiConnectTimeout = 20000;
 
 
 AsyncMqttClient mqttClient;
 Ticker mqttReconnectTimer;
-#ifdef USEWIFIMANAGER
-  WiFiManager wifiManager;
-#endif
+
 
 
 
 void publish_config(){
+  Serial.print("\nPublishing MQTT Discovery Configuration Payload\n\n");
     // TEMPERATURE
     StaticJsonDocument<300> tempdoc;
     tempdoc["dev_cla"] = "temperature"; 
@@ -18,12 +18,10 @@ void publish_config(){
     tempdoc["name"] = "weatherstation_01_temperature";
     tempdoc["stat_t"] = TOPIC_STATE;
     tempdoc["val_tpl"] = "{{ value_json.temperature }}";
-    Serial.println("Test 7");
 
     char buffer[300];
     serializeJson(tempdoc,buffer);
-    Serial.println("buffer: ");
-    Serial.println(buffer);
+ 
     uint16_t packetIdPub0 = mqttClient.publish(TOPIC_TEMP_CONFIG,1 , true, buffer);
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_TEMP_CONFIG, packetIdPub0);
     Serial.printf("Message : %s\n",buffer);
@@ -40,10 +38,9 @@ void publish_config(){
     humdoc["val_tpl"] = "{{ value_json.humidity }}";
 
     serializeJson(humdoc,buffer);
-    Serial.println("buffer: ");
-    Serial.println(buffer);
+  
     uint16_t packetIdPub2 = mqttClient.publish(TOPIC_HUM_CONFIG,1 , true, buffer);
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_HUM_CONFIG, packetIdPub2);
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_HUM_CONFIG, packetIdPub2);
     Serial.printf("Message : %s\n",buffer);
 
     memset(buffer,0, sizeof(buffer));
@@ -57,10 +54,9 @@ void publish_config(){
     presdoc["val_tpl"] = "{{ value_json.pressure }}";
 
     serializeJson(presdoc,buffer);
-    Serial.println("buffer: ");
-    Serial.println(buffer);
+   
     uint16_t packetIdPub3 = mqttClient.publish(TOPIC_PRES_CONFIG,1 , true, buffer);
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_PRES_CONFIG, packetIdPub3);
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_PRES_CONFIG, packetIdPub3);
     Serial.printf("Message : %s\n",buffer);
 
     memset(buffer,0, sizeof(buffer));
@@ -74,10 +70,9 @@ void publish_config(){
     batvdoc["val_tpl"] = "{{ value_json.battery_voltage }}";
 
     serializeJson(batvdoc,buffer);
-    Serial.println("buffer: ");
-    Serial.println(buffer);
+   
     uint16_t packetIdPub4 = mqttClient.publish(TOPIC_BATVOLT_CONFIG,1 , true, buffer);
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_BATVOLT_CONFIG, packetIdPub4);
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_BATVOLT_CONFIG, packetIdPub4);
     Serial.printf("Message : %s\n",buffer);
 
     memset(buffer,0, sizeof(buffer));
@@ -91,10 +86,9 @@ void publish_config(){
     rainvdoc["val_tpl"] = "{{ value_json.rain_voltage }}";
 
     serializeJson(rainvdoc,buffer);
-    Serial.println("buffer: ");
-    Serial.println(buffer);
+
     uint16_t packetIdPub5 = mqttClient.publish(TOPIC_RAINVOLT_CONFIG,1 , true, buffer);
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_RAINVOLT_CONFIG, packetIdPub5);
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_RAINVOLT_CONFIG, packetIdPub5);
     Serial.printf("Message : %s\n",buffer);
 
     memset(buffer,0, sizeof(buffer));
@@ -110,14 +104,13 @@ void publish_config(){
     rainsensordoc["val_tpl"] = "{{ value_json.rain_digital }}";
 
     serializeJson(rainsensordoc,buffer);
-    Serial.println("buffer: ");
-    Serial.println(buffer);
+   
     uint16_t packetIdPub6 = mqttClient.publish(TOPIC_RAINSENSOR_CONFIG,1 , true, buffer);
-    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i ", TOPIC_RAINSENSOR_CONFIG, packetIdPub6);
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_RAINSENSOR_CONFIG, packetIdPub6);
     Serial.printf("Message : %s\n",buffer);
 
     memset(buffer,0, sizeof(buffer));
-  
+    Serial.print("\n\n");
 }
 
 
@@ -164,6 +157,15 @@ void onMqttPublish(uint16_t packetId) {
   Serial.println(packetId);
 }
 
+
+bool publish_state(char *payload){
+ Serial.print("\n Publishing State payload\n\n");
+  uint16_t packetIdPub1 = mqttClient.publish(TOPIC_STATE, 1, false, payload); 
+  Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_STATE, packetIdPub1);
+  Serial.printf("Message : %s\n\n",payload);
+  return true;
+}
+
 //void onMqttSubscribe(uint16_t packetId) {
 //  if(LED_ON){
 //  digitalWrite(LEDPINWIFI,HIGH);
@@ -195,13 +197,6 @@ void WiFiEvent(WiFiEvent_t event) {
       break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
       Serial.println("Disconnected from WiFi access point");
-      Serial.println("Connecting to WiFi");
-      #ifdef USEWIFIMANAGER
-      wifiManager.autoConnect("Weatherstation_AP",AP_PASSWORD);
-      #else
-      WiFi.begin(WIFISSID,WIFIPASS);
-      #endif 
-      // WiFi.begin(ssid, password);
       break;
     case SYSTEM_EVENT_STA_AUTHMODE_CHANGE:
       Serial.println("Authentication mode of access point has changed");
@@ -209,6 +204,7 @@ void WiFiEvent(WiFiEvent_t event) {
     case SYSTEM_EVENT_STA_GOT_IP:
       Serial.print("Obtained IP address: ");
       Serial.println(WiFi.localIP());
+      connectToMqtt();
       break;
     case SYSTEM_EVENT_STA_LOST_IP:
       Serial.println("Lost IP address and IP address is reset to 0");
@@ -265,9 +261,23 @@ void WiFiEvent(WiFiEvent_t event) {
 }}
 
 
-void WiFiGotIP(WiFiEvent_t event, WiFiEventInfo_t info) {
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
-  Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
-  connectToMqtt();
+void connectToWiFi(){
+  int time = millis();
+  Serial.println("Connecting to WiFi");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFISSID,WIFIPASS);
+  while(WiFi.status() != WL_CONNECTED && (millis()-time) < WiFiConnectTimeout){
+    Serial.print("."); 
+    delay(1000);
+  }
+  if((millis()-time)>WiFiConnectTimeout){
+    Serial.print("Connection failed\n");
+  }
 }
+
+// void WiFiGotIP(WiFiEvent_t event, WiFiEventInfo_t info) {
+//   Serial.println("WiFi connected");
+//   Serial.println("IP address: ");
+//   Serial.println(IPAddress(info.got_ip.ip_info.ip.addr));
+//   connectToMqtt();
+// }

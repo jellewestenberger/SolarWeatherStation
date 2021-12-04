@@ -20,6 +20,7 @@
 // Wifi and MQTT:
 extern AsyncMqttClient mqttClient;
 extern Ticker mqttReconnectTimer;
+extern int WiFiConnectTimeout; //in ms
 
 // WiFiEventHandler wifiConnectHandler;
 // WiFiEventHandler wifiDisconnectHandler;
@@ -44,6 +45,8 @@ void onMqttSubscribe(uint16_t packetId, uint8_t qos);
 void onMqttUnsubscribe(uint16_t packetId);
 
 void onMqttPublish(uint16_t packetId) ;
+bool publish_state(char *payload);
 void publish_config();
 void WiFiEvent(WiFiEvent_t event);
 void WiFiGotIP(WiFiEvent_t event, WiFiEventInfo_t info);
+void connectToWiFi();
