@@ -303,6 +303,8 @@ void read_bme(){ // Read sensors
 }
 
 void read_BatVoltage(){
+  Serial.print("Reading batteryvoltage\n");
+  delay(100);
   bat_voltage = (analogRead(BATTERVOLTPORT))*(3.3/4096)*(float(R2+R1)/float(R1))  ;
 
   battery.val = bat_voltage; 

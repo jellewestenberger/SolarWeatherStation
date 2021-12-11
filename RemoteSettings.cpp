@@ -23,7 +23,7 @@ void publish_config(){
 
     char buffer[300];
     serializeJson(tempdoc,buffer);
- 
+
     uint16_t packetIdPub0 = mqttClient.publish(TOPIC_TEMP_CONFIG,1 , true, buffer);
     last_packagid = packetIdPub0;
     Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_TEMP_CONFIG, packetIdPub0);
