@@ -20,6 +20,7 @@ void publish_config(){
     tempdoc["name"] = "weatherstation_01_temperature";
     tempdoc["stat_t"] = TOPIC_STATE;
     tempdoc["val_tpl"] = "{{ value_json.temperature }}";
+    tempdoc["stat_cla"] = "measurement";
 
     char buffer[300];
     serializeJson(tempdoc,buffer);
@@ -39,6 +40,7 @@ void publish_config(){
     humdoc["name"] = "weatherstation_01_humidity";
     humdoc["stat_t"] = TOPIC_STATE;
     humdoc["val_tpl"] = "{{ value_json.humidity }}";
+    humdoc["stat_cla"] = "measurement";
 
     serializeJson(humdoc,buffer);
   
@@ -56,6 +58,7 @@ void publish_config(){
     presdoc["name"] = "weatherstation_01_pressure";
     presdoc["stat_t"] = TOPIC_STATE;
     presdoc["val_tpl"] = "{{ value_json.pressure }}";
+    presdoc["stat_cla"] = "measurement";
 
     serializeJson(presdoc,buffer);
    
@@ -73,6 +76,7 @@ void publish_config(){
     batvdoc["name"] = "weatherstation_01_battery_voltage";
     batvdoc["stat_t"] = TOPIC_STATE;
     batvdoc["val_tpl"] = "{{ value_json.battery_voltage }}";
+    batvdoc["stat_cla"] = "measurement";
 
     serializeJson(batvdoc,buffer);
    
@@ -90,6 +94,7 @@ void publish_config(){
     rainvdoc["name"] = "weatherstation_01_rainsensor_voltage";
     rainvdoc["stat_t"] = TOPIC_STATE;
     rainvdoc["val_tpl"] = "{{ value_json.rain_voltage }}";
+    rainvdoc["stat_cla"] = "measurement";
 
     serializeJson(rainvdoc,buffer);
 
