@@ -37,6 +37,7 @@ extern WiFiManager wifiManager;
 #define TOPIC_BATVOLT_CONFIG "homeassistant/sensor/weatherstation01/battery_voltage/config"
 #define TOPIC_RAINVOLT_CONFIG "homeassistant/sensor/weatherstation01/rain_voltage/config"
 #define TOPIC_RAINSENSOR_CONFIG "homeassistant/binary_sensor/weatherstation01/rain_voltage/config"
+#define TOPIC_LIGHTSENSOR_CONFIG "homeassistant/sensor/weatherstation01/lightsensor_voltage/config"
 
 void onMqttConnect(bool sessionPresent);
 

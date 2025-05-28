@@ -123,6 +123,24 @@ void publish_config(){
     Serial.printf("Message : %s\n",buffer);
 
     memset(buffer,0, sizeof(buffer));
+
+    // Light sensor
+    JsonDocument lightsensordoc;
+    lightsensordoc["name"] = "weatherstation_01_lightsensor";
+    lightsensordoc["stat_t"] = TOPIC_STATE;
+    lightsensordoc["dev_cla"] = "voltage";
+    lightsensordoc["unit_of_meas"] = "mV";
+    lightsensordoc["val_tpl"] = "{{ value_json.lightsensor_voltage }}";
+    lightsensordoc["stat_cla"] = "measurement";
+
+    serializeJson(lightsensordoc,buffer);
+
+    uint16_t packetIdPub7 = mqttClient.publish(TOPIC_LIGHTSENSOR_CONFIG,1, true, buffer);
+    last_packagid = packetIdPub7;
+    Serial.printf("Publishing on topic %s at QoS 1, packetId: %i \n", TOPIC_LIGHTSENSOR_CONFIG, packetIdPub7);
+    Serial.printf("Message : %s\n",buffer);
+    memset(buffer,0, sizeof(buffer));
+
     Serial.print("\n\n");
 }
 

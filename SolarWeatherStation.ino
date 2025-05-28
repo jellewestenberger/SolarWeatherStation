@@ -16,6 +16,7 @@
 #define BME_VCC 23
 #define ANALOGUERAIN 34
 #define DIGIGTALRAIN 36
+#define LIGHTPORT 35
 #define RAINPOWER 32
 #define BATTERVOLTPORT 35
 #define AVG_WINDOW 30
@@ -48,6 +49,7 @@ typedef struct Readings{
   Measurement *raining;
   Measurement *altitude; 
   Measurement *battery; 
+  Measurement *light;
 };
 
 
@@ -58,6 +60,7 @@ struct Measurement altitude;
 struct Measurement rain_voltage;
 struct Measurement raining;
 struct Measurement battery; 
+struct Measurement light;
 struct Readings measurements;
 
 struct Readings *ptr_measurements = &measurements;
@@ -67,6 +70,7 @@ Adafruit_BME280 bme; // I2C
 
 unsigned long delayTime;
 float rain_analog; 
+float light_reading;
 int rain_digital;
 // String rain_state; 
 float bat_voltage;
@@ -79,6 +83,7 @@ float bmealt;
 float pressure_avg;
 float humidity_avg;
 float temperature_avg;
+float light_avg;
 // float rain_voltage_avg;
 float altitude_avg;
 
@@ -91,6 +96,8 @@ float hum_array[AVG_WINDOW] = {0};
 int hum_counter;
 float alt_array[AVG_WINDOW] = {0};
 int alt_counter;
+float light_array[AVG_WINDOW] = {0};
+int light_counter;
 // float rain_vlt_array[AVG_WINDOW];
 
 
@@ -104,6 +111,8 @@ void setup() {
   measurements.rain_voltage = &rain_voltage;
   measurements.raining = &raining;
   measurements.temperature = &temperature;
+  measurements.light = &light;
+
 
   pressure.valid = false;
   humidity.valid = false;
@@ -116,6 +125,8 @@ void setup() {
   strcpy(rain_voltage.name,"rain_voltage");
   strcpy(raining.name,"rain_digital");
   strcpy(battery.name,"battery_voltage");
+  strcpy(light.name,"lightsensor_voltage");
+
 
 
   // bat_voltage = 0;
@@ -141,12 +152,12 @@ void setup() {
   
   delayTime = 5000;
   
-  //    wifiManager.resetSettings();// uncomment to reset stored wifi settings
   mqttClient.onConnect(onMqttConnect);
   mqttClient.onDisconnect(onMqttDisconnect);
   mqttClient.onSubscribe(onMqttSubscribe);
   mqttClient.onUnsubscribe(onMqttUnsubscribe);
   mqttClient.onPublish(onMqttPublish);
+
   mqttClient.setServer(BROKER_HOST, BROKER_PORT);
   // If your broker requires authentication (username and password), set them below
   mqttClient.setCredentials(BROKER_USER, BROKER_PASSWORD);
@@ -160,10 +171,13 @@ void setup() {
   memset(temp_array,NAN, sizeof(temp_array));
   memset(hum_array,NAN, sizeof(hum_array));
   memset(alt_array,NAN, sizeof(alt_array));
+  memset(light_array,NAN, sizeof(light_array));
+
   press_counter = 0;
   temp_counter = 0;
   hum_counter = 0;
   alt_counter = 0;
+  light_counter = 0;
   previousMillis = millis();
  
 }
@@ -172,7 +186,8 @@ void setup() {
 void loop() { 
   currentMillis = millis();
   if(currentMillis - previousMillis >= interval_loop){ // don't use delay(). Messes with Tickers
-    read_bme();       
+    read_bme();    
+    read_Light();   
     // printValues();
     
     previousMillis = currentMillis;
@@ -250,6 +265,18 @@ void read_Rain(){
     raining.valid = false;
   }
   digitalWrite(RAINPOWER,LOW);
+}
+void read_Light(){
+  light_reading = float(analogRead(LIGHTPORT)) * (3300.0/4096.0);
+  light.valid = check_validity_light_voltage(light_reading);
+  if (light.valid){
+    appendAndShiftArray(light_array,light_reading,AVG_WINDOW,&light_counter); //update window
+    light_avg = calculate_Average(light_array,AVG_WINDOW,light_counter);
+    light.val = light_avg;
+  }
+  Serial.printf("Light Reading: %f\n", light_reading);
+  Serial.printf("Light Reading average: %f\n", light_avg);
+
 }
 
 void read_bme(){ // Read sensors
@@ -358,6 +385,12 @@ void set_state_structure(){
   else{
     stateJson[ptr_measurements->battery->name] = NAN;
   }
+  if(ptr_measurements->light->valid){
+    stateJson[ptr_measurements->light->name] = ptr_measurements->light->val; 
+  }
+  else{
+    stateJson[ptr_measurements->light->name] = NAN;
+  }
 
   memset(statebuffer,0,sizeof(statebuffer));
   serializeJson(stateJson,statebuffer);
@@ -437,6 +470,15 @@ bool check_validity_rain_voltage(float val){
 
 bool check_validity_battery_voltage(float val){
   if(val>=0 && val <= 10){
+    return true;
+  }
+  else{
+    return false;
+  }
+}
+
+bool check_validity_light_voltage(float val){
+  if(val>=0 && val <= 5000){
     return true;
   }
   else{
